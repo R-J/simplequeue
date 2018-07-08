@@ -56,7 +56,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
         try {
             Gdn::database()->query($query, $values);
             $result = true;
-        } catch (\Exception $e) {
+        } catch (Exception $ex) {
             $result = false;
         }
 
@@ -66,14 +66,14 @@ class SimpleQueuePlugin extends Gdn_Plugin {
     /**
      * Fetch one or more messages from the queue.
      *
-     * @param string $name Name of the queue.
+     * @param array $name Name(s) of the queue item(s).
      * @param integer $limit Number of messages to fetch.
      *
      * @return array|null Array of Messages.
      */
-    public function fetch($name = false, $limit = 1) {
-        if ($name) {
-            Gdn::sql()->where('Name', $name)
+    public function fetch(array $name = [], int $limit = 10) {
+        if ($name != []) {
+            Gdn::sql()->whereIn('Name', $name)
         }
 
         $result = Gdn::sql()
@@ -99,7 +99,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
      *
      * @return bool Result of update operation.
      */
-    public function acknowledge(array $simpleQueueIDs) {
+    public function acknowledge(array $simpleQueueIDs = []) {
         return Gdn::sql()
             ->update('SimpleQueue')
             ->set('Acknowledged', true)
@@ -112,12 +112,12 @@ class SimpleQueuePlugin extends Gdn_Plugin {
      *
      * @param array $simpleQueueIDs IDs to update.
      * @param integer $minutes The minutes this job should be delayed.
-     * 
+     *
      * @return bool Result of the operation.
      */
-    public function delay($simpleQueueIDs, $minues = null) {
-        if (!$minutes) {
-            $minutes = c('simpleQueue.DefaultDelay', '5');
+    public function delay(array $simpleQueueIDs = [], integer $minutes = 0) {
+        if ($minutes = 0) {
+            $minutes = c('SimpleQueue.DefaultDelay', '5');
         }
         return Gdn::sql()
             ->update('SimpleQueue')
@@ -129,13 +129,16 @@ class SimpleQueuePlugin extends Gdn_Plugin {
     /**
      * This function fires an event based on the message in the queue.
      *
-     * This function has a loop which might time out
-     * @param  boolean $jobsCount [description]
-     * @return [type]             [description]
+     * This function has a loop which might time out, but that is the nature
+     * of such a queue.
+     *
+     * @param boolean $jobsCount How many tasks should be processed.
+     *
+     * @return void.
      */
-    public function run($jobsCount = false) {
+    public function run(integer $jobsCount = 0) {
         // The number of jobs which should be fetched (no need for a small number).
-        if (!$jobsCount) {
+        if ($jobsCount = 0) {
             $jobsCount = c('simpleQueue.DefaultJobsCount', 100)
         }
         // Continuously get messages
