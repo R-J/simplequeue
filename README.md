@@ -1,5 +1,3 @@
-# Work in Progress!
-
 # Simple Queue for Vanilla Forums
 
 This plugin provides a way for other plugins to queue time intense tasks so that forum users of Vanilla do not face inconveniences because some needed actions take longer, like sending mails, doing API calls etc.
