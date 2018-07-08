@@ -8,7 +8,7 @@
     "mobileFriendly": true,
     "hasLocale": true,
     "settingsUrl": "/settings/simplequeue",
-    "documentationUrl": "/settings/simplequeue",
+    "documentationUrl": "https://r-j.github.io/simplequeue/",
     "pluginUrl": "https://github.com/r-j/simplequeue",
     "authors": [
         {
