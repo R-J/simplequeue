@@ -7,6 +7,8 @@ class SimpleQueuePlugin extends Gdn_Plugin {
      * @return void.
      */
     public function setup() {
+        touchConfig('SimpleQueue.FetchLimit', 100);
+        touchConfig('SimpleQueue.DefaultDelay', 2);
         $this->structure();
     }
 
@@ -66,14 +68,17 @@ class SimpleQueuePlugin extends Gdn_Plugin {
     /**
      * Fetch one or more messages from the queue.
      *
-     * @param array $name Name(s) of the queue item(s).
      * @param integer $limit Number of messages to fetch.
+     * @param array $name Name(s) of the queue item(s).
      *
      * @return array|null Array of Messages.
      */
-    public function fetch(array $name = [], int $limit = 10) {
+    public function fetch(int $limit = 0, array $name = []) {
+        if ($limit == 0) {
+            $limit = c('SimpleQueue.FetchLimit', 10);
+        }
         if ($name != []) {
-            Gdn::sql()->whereIn('Name', $name)
+            Gdn::sql()->whereIn('Name', $name);
         }
 
         $result = Gdn::sql()
@@ -86,7 +91,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
             ->limit($limit)
             ->get()
             ->resultArray();
-        foreach($result as $key => $value) {
+        foreach ($result as $key => $value) {
             $result[$key]['Body'] = dbdecode($value['Body']);
         }
         return $result;
@@ -117,7 +122,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
      */
     public function delay(array $simpleQueueIDs = [], integer $minutes = 0) {
         if ($minutes = 0) {
-            $minutes = c('SimpleQueue.DefaultDelay', '5');
+            $minutes = c('SimpleQueue.DefaultDelay', 2);
         }
         return Gdn::sql()
             ->update('SimpleQueue')
@@ -127,7 +132,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
     }
 
     /**
-     * This function fires an event based on the message in the queue.
+     * This function fires an event which must be handled by plugins.
      *
      * This function has a loop which might time out, but that is the nature
      * of such a queue.
@@ -139,24 +144,27 @@ class SimpleQueuePlugin extends Gdn_Plugin {
     public function run(integer $jobsCount = 0) {
         // The number of jobs which should be fetched (no need for a small number).
         if ($jobsCount = 0) {
-            $jobsCount = c('simpleQueue.DefaultJobsCount', 100)
+            $jobsCount = c('simpleQueue.DefaultJobsCount', 100);
         }
         // Continuously get messages
-        while($messages = $this->fetch(false, $jobsCount)) {
+        while ($messages = $this->fetch($jobsCount)) {
             foreach ($messages as $message) {
                 $acknowledged = false;
                 $this->EventArguments['Acknowledged'] &= $acknowledged;
                 $this->EventArguments['Message'] = $message;
                 // Allow other plugins to handle messages by hooking into
-                // SimpleQueuePlugin_MessageNameRun_Handler
-                $this->fireEvent($message['Name'].'Run');
+                // SimpleQueuePlugin_BeforeMessageName_Handler.
                 // Plugins have to set $args['Acknowledged'] = true in order to
-                // mark job as done
+                // mark job as done.
+                $this->fireEvent($message['Name'].'Before');
                 if ($acknowledged) {
                     $this->acknowledge($message['SimpleQueueID']);
                 } else {
                     // If it has not been handled, it should be delayed.
-                    $this->delay($message['SimpleQueueID']);
+                    $this->delay(
+                        $message['SimpleQueueID'],
+                        c('SimpleQueue.DefaultDelay', 2)
+                    );
                 }
             }
         }
@@ -169,8 +177,8 @@ class SimpleQueuePlugin extends Gdn_Plugin {
      *
      * @return void.
      */
-    public function settingsController_simplequeue_create($sender, $args) {
-        $sender->render($sender->fetchViewLocation('queuedoc', '', 'plugins/simplequeue'));
+    public function settingsController_simpleQueue_create($sender) {
+        $sender->render('documentation', '', 'plugins/simplequeue');
     }
 
     public function pluginController_simpleQueue_create($handler, $args) {
