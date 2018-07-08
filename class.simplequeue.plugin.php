@@ -12,6 +12,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
         touchConfig('SimpleQueue.FetchLimit', 100);
         touchConfig('SimpleQueue.DefaultDelay', 2);
         touchConfig('SimpleQueue.SecretUrl', betterRandomString(32, 'aA0'));
+        touchConfig('SimpleQueue.FinalFailureLimit', 10);
         $this->structure();
     }
 
@@ -23,12 +24,13 @@ class SimpleQueuePlugin extends Gdn_Plugin {
     public function structure() {
         Gdn::structure()
             ->table('SimpleQueue')
-            ->primaryKey('SimpleQueueID', 'int', 0)
+            ->primaryKey('SimpleQueueID')
             ->column('Name', 'varchar(192)', false)
             ->column('Body', 'text', false)
             ->column('DateDue', 'datetime', false)
             ->column('DateInserted', 'datetime', false)
             ->column('Acknowledged', 'tinyint(1)', false)
+            ->column('CountFailures', 'int', 0)
             ->set();
     }
 
@@ -54,6 +56,18 @@ class SimpleQueuePlugin extends Gdn_Plugin {
             'SimpleQueue.SecretUrl' => [
                 'Label' => 'Secret Text',
                 'Description' => 'This will be a part of the url that needs to be called. Normally it doesn\'t need to be changed.'
+            ],
+            'SimpleQueue.FetchLimit' => [
+                'Label' => 'Fetch Limit',
+                'Description' => 'How many tasks should be fetched from queue. Choose a high number.'
+            ],
+            'SimpleQueue.DefaultDelay' => [
+                'Label' => 'Default Delay',
+                'Description' => 'When performing a task fails, the task gets delayed by this number of minutes.'
+            ],
+            'SimpleQueue.FinalFailureLimit' => [
+                'Label' => 'Final Failure Limit',
+                'Description' => 'When taking an action failed this number of times, it will be excluded from the open tasks list.'
             ]
         ]);
         $configurationModule->renderAll();
@@ -116,6 +130,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
             ->from('SimpleQueue')
             ->where('DateDue <=', Gdn_Format::toDateTime())
             ->where('Acknowledged', false)
+            ->where('CountFailures <', c('SimpleQueue.FinalFailureLimit', 10))
             ->orderBy('DateDue', 'asc')
             ->orderBy('SimpleQueueID', 'asc')
             ->limit($limit)
@@ -157,6 +172,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
         return Gdn::sql()
             ->update('SimpleQueue')
             ->set('DateDue', Gdn_Format::toDateTime(strtotime("+{$minutes} minutes")))
+            ->set('CountFailures', 'CountFailures + 1', false)
             ->whereIn('SimpleQueueID', $simpleQueueIDs)
             ->put();
     }
