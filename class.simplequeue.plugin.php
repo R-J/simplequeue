@@ -1,5 +1,7 @@
 <?php
-
+/**
+ * Plugin that provides a queue mechanism for other plugins.
+ */
 class SimpleQueuePlugin extends Gdn_Plugin {
     /**
      * Init database structure changes.
@@ -9,6 +11,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
     public function setup() {
         touchConfig('SimpleQueue.FetchLimit', 100);
         touchConfig('SimpleQueue.DefaultDelay', 2);
+        touchConfig('SimpleQueue.SecretUrl', betterRandomString(32, 'aA0'));
         $this->structure();
     }
 
@@ -30,6 +33,33 @@ class SimpleQueuePlugin extends Gdn_Plugin {
     }
 
     /**
+     * Create a settings page for the secret url you need for cron jobs.
+     *
+     * @param SettingsController $sender Instance of the calling class.
+     *
+     * @return void.
+     */
+    public function settingsController_simpleQueue_create($sender) {
+        $sender->permission('Garden.Settings.Manage');
+
+        $cronUrl = url('/plugin/simplequeue/'.c('SimpleQueue.SecretUrl'), true);
+        decho($cronUrl);
+
+        $sender->setData([
+            'Title' => t('Simple Queue Settings'),
+            'Description' => t('You have to set up a cron job that periodically calls "'.$cronUrl.'"')
+        ]);
+        $configurationModule = new configurationModule($sender);
+        $configurationModule->initialize([
+            'SimpleQueue.SecretUrl' => [
+                'Label' => 'Secret Text',
+                'Description' => 'This will be a part of the url that needs to be called. Normally it doesn\'t need to be changed.'
+            ]
+        ]);
+        $configurationModule->renderAll();
+    }
+
+    /**
      * Send a message to the queue.
      *
      * @param string $name The name of the queue.
@@ -38,12 +68,12 @@ class SimpleQueuePlugin extends Gdn_Plugin {
      *
      * @return bool Whether action was successful.
      */
-    public function send(string $name, array $messages) {
+    public static function send(string $name, array $messages) {
         // Build one SQL query.
         $query = 'INSERT INTO '.Gdn::database()->DatabasePrefix.'SimpleQueue (Name, Body, DateDue, DateInserted, Acknowledged) VALUES ';
         $values = [];
         foreach ($messages as $message) {
-            $query .= '(?, ?, ?, ?),';
+            $query .= '(?, ?, ?, ?, ?),';
             array_push(
                 $values,
                 $name,
@@ -120,7 +150,7 @@ class SimpleQueuePlugin extends Gdn_Plugin {
      *
      * @return bool Result of the operation.
      */
-    public function delay(array $simpleQueueIDs = [], integer $minutes = 0) {
+    public function delay(array $simpleQueueIDs = [], int $minutes = 0) {
         if ($minutes = 0) {
             $minutes = c('SimpleQueue.DefaultDelay', 2);
         }
@@ -137,11 +167,11 @@ class SimpleQueuePlugin extends Gdn_Plugin {
      * This function has a loop which might time out, but that is the nature
      * of such a queue.
      *
-     * @param boolean $jobsCount How many tasks should be processed.
+     * @param integer $jobsCount How many tasks should be processed.
      *
      * @return void.
      */
-    public function run(integer $jobsCount = 0) {
+    public function run(int $jobsCount = 0) {
         // The number of jobs which should be fetched (no need for a small number).
         if ($jobsCount = 0) {
             $jobsCount = c('simpleQueue.DefaultJobsCount', 100);
@@ -156,13 +186,13 @@ class SimpleQueuePlugin extends Gdn_Plugin {
                 // SimpleQueuePlugin_BeforeMessageName_Handler.
                 // Plugins have to set $args['Acknowledged'] = true in order to
                 // mark job as done.
-                $this->fireEvent($message['Name'].'Before');
-                if ($acknowledged) {
-                    $this->acknowledge($message['SimpleQueueID']);
+                $this->fireEvent('Before'.$message['Name']);
+                if ($this->EventArguments['Acknowledged'] == true) {
+                    $this->acknowledge([$message['SimpleQueueID']]);
                 } else {
                     // If it has not been handled, it should be delayed.
                     $this->delay(
-                        $message['SimpleQueueID'],
+                        [$message['SimpleQueueID']],
                         c('SimpleQueue.DefaultDelay', 2)
                     );
                 }
@@ -171,38 +201,18 @@ class SimpleQueuePlugin extends Gdn_Plugin {
     }
 
     /**
-     * Documentation page.
+     * Expose endpoint for cron tasks.
      *
-     * @param SettingsController $sender Instance of the calling class.
+     * @param PluginController $sender Instance of the calling class.
+     * @param mixed $args Url parameters
      *
      * @return void.
      */
-    public function settingsController_simpleQueue_create($sender) {
-        $sender->render('documentation', '', 'plugins/simplequeue');
-    }
-
-    public function pluginController_simpleQueue_create($handler, $args) {
-        $name = 'TestQueueMessage';
-        $messages[] = [
-            'Body' => 'message one'
-        ];
-        $messages[] = [
-            'Body' => 'Second Message',
-            'DateDue' => Gdn_Format::toDateTime(strtotime('+30 minutes'))
-        ];
-        $messages[] = [
-            'Body' => 'Third Message',
-            'DateDue' => Gdn_Format::toDateTime(strtotime('+3 minutes'))
-        ];
-
-        // decho($this->send($name, $messages));
-
-        decho($this->fetch('TestQueueMessage', 10));
-        decho($this->fetch('TestQueueMessage'));
-$message = $this->fetch('TestQueueMessage');
-decho($message[0]['SimpleQueueID']);
-$this->acknowledge([1]);
-        decho($this->fetch('TestQueueMessage'));
-        decho($this->fetch('TestQueueMessage', 10));
+    public function pluginController_simpleQueue_create($sender, $args) {
+        $parameter = val(0, $args, '');
+        if ($parameter == '' || $parameter != c('SimpleQueue.SecretUrl')) {
+            return;
+        }
+        $this->run(c('SimpleQueue.FetchLimit'));
     }
 }

@@ -1,12 +1,13 @@
 {
     "name": "Simple Queue",
     "description": "Implementation of a simple queue-ing system.",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "license": "MIT",
     "type": "addon",
     "key": "simplequeue",
     "mobileFriendly": true,
     "hasLocale": true,
+    "settingsUrl": "/settings/simplequeue",
     "documentationUrl": "/settings/simplequeue",
     "pluginUrl": "https://github.com/r-j/simplequeue",
     "authors": [
